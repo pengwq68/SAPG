@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-Training script for the Posterior Cue Predictor (PCP).
-This script trains the cue predictor only and does not train the diffusion backbone.
-"""
+#Training script for the Posterior Cue Predictor (PCP).
+#This script trains the cue predictor only and does not train the diffusion backbone.
 
 from __future__ import annotations
 import os, argparse, random, time, math
@@ -15,7 +12,6 @@ from PIL import Image
 import torch
 import torch.nn.functional as F
 
-# Sobel kernel cache (avoid per-step CUDA tensor creation -> fragmentation)
 _SOBEL_CACHE = {}
 
 def _sobel_mag_gray01_cached(x01: torch.Tensor) -> torch.Tensor:
@@ -42,10 +38,6 @@ def edge_focal_loss_from_irvis(ir_a: torch.Tensor,
                                edge_ground_boost: float = 0.0,
                                edge_ground_y0: float = 0.55,
                                eps: float = 1e-6) -> torch.Tensor:
-    """Edge-Focal loss to preserve lane/ground markings.
-    Uses IR edge magnitude as focal weight: w=(e_ir^p), optional background-only and ground ramp boost.
-    Inputs are in [-1,1]: ir_a [B,1,H,W], vis_xt [B,3,H,W], roi_full [B,1,H,W] in [0,1] (optional).
-    """
     assert ir_a.ndim == 4 and vis_xt.ndim == 4
     B, _, H, W = ir_a.shape
 
@@ -81,9 +73,7 @@ from pcp_model import (
     lowpass_rgb
 )
 
-# -------------------------
 # dataset
-# -------------------------
 IMG_EXT = {".png",".jpg",".jpeg",".bmp",".webp"}
 
 def list_images(root: str) -> List[str]:
@@ -139,9 +129,7 @@ class PairedIRVISDataset(Dataset):
         vis = Image.open(vp).convert("RGB")
         return self.t_ir(ir), self.t_vis(vis), stem(ip)
 
-# -------------------------
 # diffusion utilities
-# -------------------------
 def get_beta_schedule(beta_schedule: str, *, beta_start: float, beta_end: float, num_diffusion_timesteps: int) -> torch.Tensor:
     if beta_schedule == "linear":
         betas = np.linspace(beta_start, beta_end, num_diffusion_timesteps, dtype=np.float64)
@@ -168,9 +156,7 @@ def q_sample(x0: torch.Tensor, t: torch.Tensor, sqrt_alphas_cumprod: torch.Tenso
     eps = torch.randn_like(x0)
     return extract(sqrt_alphas_cumprod, t, x0.shape) * x0 + extract(sqrt_one_minus_alphas_cumprod, t, x0.shape) * eps
 
-# -------------------------
 # augmentation (keep consistent with v22)
-# -------------------------
 def jitter_ir_night(ir: torch.Tensor) -> torch.Tensor:
     x = (ir + 1.0) * 0.5
     g = torch.empty(ir.shape[0], 1, 1, 1, device=ir.device).uniform_(0.6, 1.8)
@@ -216,11 +202,7 @@ def ir_aug_nightlike_v2(ir: torch.Tensor,
                         local_drop_strength=(0.45, 0.85),
                         cutout_prob=0.25,
                         cutout_frac=(0.10, 0.28)) -> torch.Tensor:
-    """Stronger night-like IR degradation to bridge day-to-night domain gap.
 
-    Mimics: low contrast, blur, sensor noise, and partial missing evidence
-    (vehicle rear/bottom disappears) via local attenuation + cutout.
-    """
     assert ir.ndim == 4 and ir.shape[1] == 1
     x = (ir + 1.0) * 0.5
     x = x.clamp(0, 1)
@@ -328,13 +310,8 @@ def duskify(vis: torch.Tensor,
     x = (x + torch.randn_like(x) * noise_std).clamp(0, 1)
     return x * 2.0 - 1.0
 
-# -------------------------
 # timestep resampling
-# -------------------------
 class TimestepResampler:
-    """
-    loss_second_moment: weights(t) proportional to sqrt( EMA(loss(t)^2) )
-    """
     def __init__(self, T: int, mode: str = "uniform", ema: float = 0.99, eps: float = 1e-8, device: torch.device | str = "cpu"):
         self.T = int(T)
         self.mode = str(mode)
@@ -366,9 +343,7 @@ class TimestepResampler:
         for ti, li2 in zip(t.tolist(), l2.tolist()):
             self.m2[ti] = self.ema * self.m2[ti] + (1.0 - self.ema) * float(li2)
 
-# -------------------------
 # late-boost schedule
-# -------------------------
 def late_boost_mult(t: torch.Tensor, T: int, start: float, gain: float, k: float) -> torch.Tensor:
     """
     progress = 1 - t/(T-1), in [0,1]; larger means later (closer to x0).
@@ -380,9 +355,7 @@ def late_boost_mult(t: torch.Tensor, T: int, start: float, gain: float, k: float
     z = (prog - float(start)) / max(float(k), 1e-6)
     return 1.0 + float(gain) * torch.sigmoid(z)
 
-# -------------------------
 # logging
-# -------------------------
 def _append_line(path: str, s: str):
     with open(path, "a", encoding="utf-8") as f:
         f.write(s + "\n")
@@ -390,11 +363,6 @@ def _append_line(path: str, s: str):
 
 
 def load_state_dict_forgiving(model: nn.Module, state: Dict[str, torch.Tensor]) -> Tuple[int, int]:
-    """
-    Load only keys that both exist AND have the same shape.
-    This avoids the classic mismatch like gdc_gate input channels (5 vs 6) when initializing from older ckpts.
-    Returns (loaded, skipped).
-    """
     msd = model.state_dict()
     loaded = 0
     skipped = 0
@@ -407,9 +375,7 @@ def load_state_dict_forgiving(model: nn.Module, state: Dict[str, torch.Tensor]) 
     model.load_state_dict(msd, strict=False)
     return loaded, skipped
 
-# -------------------------
 # args
-# -------------------------
 def build_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ir_root", type=str, required=True)
@@ -633,7 +599,7 @@ def main():
 
     global_step = 0
 
-    # --- auto schedule state ---
+    #auto schedule state
     cur_lr = float(args.lr)
 
     def _set_lr(new_lr: float):
@@ -649,7 +615,7 @@ def main():
     for epoch in range(start_epoch, args.epochs + 1):
         model.train()
 
-        # --- auto 2-phase schedule (hands-off overnight) ---
+        #auto 2-phase schedule (hands-off overnight)
         if args.auto_schedule and int(args.phase1_epochs) > 0:
             phase2 = (epoch > int(args.phase1_epochs))
         else:
@@ -709,7 +675,7 @@ def main():
             with (torch.cuda.amp.autocast(dtype=torch.float16) if use_amp else torch.enable_grad()):
                 out = model(ir_a, vis_xt, t=t_in)
 
-                # ---------------- struct losses ----------------
+                #  struct losses
                 l_roi8, l_bg8 = roi_l2_losses(out["s8_ir"], out["s8_vis"], out["roi8"])
                 l_roi16, l_bg16 = roi_l2_losses(out["s16_ir"], out["s16_vis"], out["roi16"])
                 l_align = args.w_roi * (l_roi8 + l_roi16) + args.w_bg * (l_bg8 + l_bg16)
@@ -751,7 +717,7 @@ def main():
                 # ortho between struct and color features
                 l_ortho = (orthogonal_loss(out["s8_vis"], out["c8_vis"]) + orthogonal_loss(out["s16_vis"], out["c16_vis"])) * args.w_ortho
 
-                # ---------------- dayness (late-boosted) ----------------
+                #dayness (late-boosted)
                 # day=1 on vis_lp, dusk=0 on dusk_lp
                 if w_day_eff > 0.0:
                     day_logits = model.encode_vis(vis_lp, t=t_in)['day_logit']
@@ -765,7 +731,7 @@ def main():
                 else:
                     l_day = vis_xt.new_tensor(0.0)
 
-                # ---------------- gated CDC + gate losses (late-boosted) ----------------
+                #gated CDC + gate losses (late-boosted)
                 gate_active = ((w_gdc_eff > 0.0) or (float(args.w_gate_prior) > 0.0) or (float(args.w_gate_tv) > 0.0) or (w_gate_sup_eff > 0.0) or (float(args.w_gfeat) > 0.0))
                 if gate_active:
                     # build edges
