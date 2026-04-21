@@ -1,4 +1,3 @@
-
 import os
 import math
 import glob
@@ -38,7 +37,6 @@ def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_time
 
 
 def extract(a, t, x_shape):
-    """Extract values from 1D tensor a at indices t and reshape to [B,1,1,1]."""
     b = t.shape[0]
     out = a.gather(0, t)
     return out.view(b, *([1] * (len(x_shape) - 1)))
@@ -82,7 +80,6 @@ def _add_module_prefix(sd):
 
 
 def load_state_dict_flexible(model, state_dict):
-    """Load state dict even if 'module.' prefix mismatches."""
     msd = model.state_dict()
     has_module_in_model = any(k.startswith("module.") for k in msd.keys())
     has_module_in_ckpt = any(k.startswith("module.") for k in state_dict.keys())
@@ -116,11 +113,6 @@ def call_with_supported_kwargs(fn, **kwargs):
 
 
 def expand_unet_in_channels_(model: torch.nn.Module, new_in_channels: int, logger=None):
-    """
-    If create_model doesn't take in_channels, we expand the first conv weight.
-    - Find the earliest Conv2d expecting 3 in_channels and expand to new_in_channels
-    - Copy RGB weights into first 3 channels; init extra channels with mean(RGB)
-    """
     conv = None
     conv_name = None
     for name, m in model.named_modules():
@@ -226,7 +218,7 @@ class KAISTPairedIRVISDataset(data.Dataset):
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ])
-        # VIS: RGB -> tensor [3,H,W] -> normalize to [-1,1]
+        # VIS: RGB - tensor [3,H,W] - normalize to [-1,1]
         self.vis_tf = transforms.Compose([
             transforms.Resize((image_size, image_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),
